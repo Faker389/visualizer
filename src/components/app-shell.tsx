@@ -3,20 +3,33 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, ChartColumn, CreditCard, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
+import { Box, ChartColumn, CreditCard, LifeBuoy, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { ActivityProvider } from "@/components/activity-store";
+import { BillingProvider } from "@/components/billing-store";
 import { ModelsProvider } from "@/components/models-store";
+import { SettingsProvider, useSettings } from "@/components/settings-store";
 import { cn } from "@/lib/cn";
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
 
 const nav: { href: string; label: string; icon: LucideIcon; match: (p: string) => boolean }[] = [
   { href: "/dashboard", label: "My Models", icon: Box, match: (p) => p === "/dashboard" || p.startsWith("/models") },
   { href: "/analytics", label: "Analytics", icon: ChartColumn, match: (p) => p === "/analytics" },
   { href: "/billing", label: "Billing", icon: CreditCard, match: (p) => p === "/billing" },
   { href: "/settings", label: "Settings", icon: Settings, match: (p) => p === "/settings" },
+  { href: "/help", label: "Help & support", icon: LifeBuoy, match: (p) => p === "/help" },
 ];
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { settings } = useSettings();
   return (
     <div className="flex h-full flex-col">
       <div className="px-6 py-6">
@@ -44,11 +57,11 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
       <div className="m-3 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50 p-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-amber-300 to-rose-400 text-sm font-semibold text-white">
-          JC
+          {initials(settings.name)}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-slate-900">Jane Cooper</p>
-          <p className="truncate text-xs text-slate-500">jane@studio.co</p>
+          <p className="truncate text-sm font-medium text-slate-900">{settings.name}</p>
+          <p className="truncate text-xs text-slate-500">{settings.email}</p>
         </div>
         <Link
           href="/"
@@ -69,7 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => setOpen(false), [pathname]);
 
   return (
-    <ModelsProvider>
+    <Providers>
       <div className="min-h-screen bg-slate-50">
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200/70 bg-white lg:block">
           <Sidebar />
@@ -105,6 +118,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </div>
       </div>
-    </ModelsProvider>
+    </Providers>
+  );
+}
+
+function Providers({ children }: { children: ReactNode }) {
+  return (
+    <SettingsProvider>
+      <BillingProvider>
+        <ActivityProvider>
+          <ModelsProvider>{children}</ModelsProvider>
+        </ActivityProvider>
+      </BillingProvider>
+    </SettingsProvider>
   );
 }

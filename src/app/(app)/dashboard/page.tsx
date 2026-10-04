@@ -3,36 +3,36 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Box, EllipsisVertical, HardDrive, Layers, Pencil, Plus, QrCode, ScanLine, Search, Trash2, TrendingUp } from "lucide-react";
+import { AlertTriangle, Box, Download, EllipsisVertical, LoaderCircle, Pencil, Plus, QrCode, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
+import { NotificationsMenu } from "@/components/notifications-menu";
+import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { OverviewMetrics } from "@/components/overview-metrics";
 import { UploadWizard } from "@/components/upload-wizard";
+import { useActivity } from "@/components/activity-store";
 import { useModels } from "@/components/models-store";
-import type { ArModel } from "@/lib/models";
+import { useSettings } from "@/components/settings-store";
+import { isLive, shortUrl, type ArModel, type ModelStatus } from "@/lib/models";
+import { downloadBlob, qrZip } from "@/lib/qr";
+import { cn } from "@/lib/cn";
 
-function MetricCard({
-  label,
-  value,
-  icon: Icon,
-  children,
-}: {
-  label: string;
-  value: string;
-  icon: typeof Box;
-  children?: React.ReactNode;
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <p className="text-sm font-medium text-slate-500">{label}</p>
-        <div className="grid size-9 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
-          <Icon className="size-[18px]" aria-hidden />
-        </div>
-      </div>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{value}</p>
-      <div className="mt-3">{children}</div>
-    </Card>
-  );
-}
+type Filter = "all" | ModelStatus;
+type Sort = "newest" | "scans" | "name";
+
+const filters: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Live" },
+  { value: "processing", label: "Processing" },
+  { value: "failed", label: "Needs attention" },
+  { value: "draft", label: "Drafts" },
+  { value: "unpublished", label: "Unpublished" },
+];
+
+const sorters: Record<Sort, (a: ArModel, b: ArModel) => number> = {
+  newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
+  scans: (a, b) => b.scans - a.scans,
+  name: (a, b) => a.name.localeCompare(b.name),
+};
 
 function ModelMenu({ model, onDelete }: { model: ArModel; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
@@ -63,18 +63,14 @@ function ModelMenu({ model, onDelete }: { model: ArModel; onDelete: () => void }
       </button>
       {open && (
         <div role="menu" className="animate-fade-up absolute right-0 mt-1.5 w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-lg shadow-slate-900/10">
-          <Link
-            role="menuitem"
-            href={`/models/${model.id}`}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-          >
+          <Link role="menuitem" href={`/models/${model.id}`} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
             <Pencil className="size-4 text-slate-400" aria-hidden /> Edit
           </Link>
           <button
             role="menuitem"
             onClick={() => {
               setOpen(false);
-              onDelete();
+              if (confirm(`Delete ${model.name}? Its link and QR code will stop working.`)) onDelete();
             }}
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
           >
@@ -86,43 +82,114 @@ function ModelMenu({ model, onDelete }: { model: ArModel; onDelete: () => void }
   );
 }
 
-function ModelCard({ model, onDelete }: { model: ArModel; onDelete: () => void }) {
+function Thumbnail({ model }: { model: ArModel }) {
+  if (model.status === "processing") {
+    return (
+      <div className="flex flex-col items-center gap-2 text-indigo-600">
+        <LoaderCircle className="size-8 animate-spin" aria-hidden />
+        <span className="text-xs font-medium">Generating… ~2 min</span>
+      </div>
+    );
+  }
+  if (model.status === "failed") {
+    return (
+      <div className="flex flex-col items-center gap-2 px-6 text-center text-rose-600">
+        <AlertTriangle className="size-8" aria-hidden />
+        <span className="line-clamp-2 text-xs">{model.failureReason ?? "Generation failed"}</span>
+      </div>
+    );
+  }
+  return model.thumbnailUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={model.thumbnailUrl}
+      alt=""
+      loading="lazy"
+      className={cn("size-full object-contain p-4 transition group-hover:scale-105", model.status === "unpublished" && "opacity-50 grayscale")}
+    />
+  ) : (
+    <Box className="size-14 text-slate-300 transition group-hover:scale-110 group-hover:text-indigo-400" strokeWidth={1.25} aria-hidden />
+  );
+}
+
+function ModelCard({ model, onDelete, onRetry }: { model: ArModel; onDelete: () => void; onRetry: () => void }) {
   return (
     <Card className="group relative overflow-hidden transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200">
       <ModelMenu model={model} onDelete={onDelete} />
-      <Link href={`/models/${model.id}`} className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 rounded-2xl">
-        <div className="grid aspect-[4/3] place-items-center bg-gradient-to-br from-slate-100 to-slate-200/70">
-          <Box className="size-14 text-slate-300 transition group-hover:scale-110 group-hover:text-indigo-400" strokeWidth={1.25} aria-hidden />
+      <Link href={`/models/${model.id}`} className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500">
+        <div
+          className={cn(
+            "grid aspect-[4/3] place-items-center overflow-hidden",
+            model.status === "failed" ? "bg-rose-50" : model.status === "processing" ? "bg-indigo-50/70" : "bg-gradient-to-br from-slate-50 to-slate-200/70",
+          )}
+        >
+          <Thumbnail model={model} />
         </div>
         <div className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate font-medium text-slate-900">{model.name}</h3>
-          </div>
+          <h3 className="truncate font-medium text-slate-900">{model.name}</h3>
+          {model.tags.length > 0 && <p className="mt-0.5 truncate text-xs text-slate-400">{model.tags.join(" · ")}</p>}
           <div className="mt-3 flex items-center justify-between">
             <Badge status={model.status} />
-            <span className="inline-flex items-center gap-1.5 text-sm text-slate-500" title="Total scans">
-              <QrCode className="size-4 text-slate-400" aria-hidden />
-              <span className="tabular-nums">{model.scans.toLocaleString()}</span>
-              <span className="sr-only">scans</span>
-            </span>
+            {model.status !== "failed" && (
+              <span className="inline-flex items-center gap-1.5 text-sm text-slate-500" title="Total scans">
+                <QrCode className="size-4 text-slate-400" aria-hidden />
+                <span className="tabular-nums">{model.scans.toLocaleString("en-US")}</span>
+                <span className="sr-only">scans</span>
+              </span>
+            )}
           </div>
         </div>
       </Link>
+      {model.status === "failed" && (
+        <div className="px-4 pb-4">
+          <Button variant="secondary" size="sm" className="w-full" onClick={onRetry}>
+            <RefreshCw className="size-4" aria-hidden /> Retry for free
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { models, addModel, removeModel } = useModels();
+  const { models, addModel, removeModel, retryModel } = useModels();
+  const { settings } = useSettings();
+  const { notify, completeOnboarding } = useActivity();
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [tag, setTag] = useState("");
+  const [sort, setSort] = useState<Sort>("newest");
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  const filtered = models.filter((m) => m.name.toLowerCase().includes(query.toLowerCase()));
-  const totalScans = models.reduce((s, m) => s + m.scans, 0);
-  const active = models.filter((m) => m.status === "active").length;
-  const storageUsed = models.reduce((s, m) => s + parseFloat(m.fileSize), 0);
-  const storageLimit = 100;
+  const counts = Object.fromEntries(filters.map((f) => [f.value, f.value === "all" ? models.length : models.filter((m) => m.status === f.value).length]));
+  const tags = [...new Set(models.flatMap((m) => m.tags))].sort();
+  const filtered = models
+    .filter((m) => m.name.toLowerCase().includes(query.toLowerCase()))
+    .filter((m) => filter === "all" || m.status === filter)
+    .filter((m) => !tag || m.tags.includes(tag))
+    .sort(sorters[sort]);
+  const exportable = filtered.filter(isLive);
+
+  const exportQrCodes = async () => {
+    setExporting(true);
+    try {
+      const zip = await qrZip(
+        exportable.map((m) => ({ name: m.name, url: `https://${shortUrl(m.slug, settings.viewerDomain)}` })),
+        { color: settings.qrColor, errorCorrectionLevel: settings.qrErrorCorrection },
+      );
+      downloadBlob(zip, `qr-codes-${new Date().toISOString().slice(0, 10)}.zip`);
+      completeOnboarding("qrDownloaded");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const retry = (m: ArModel) => {
+    retryModel(m.id);
+    notify({ kind: "info", title: `Retrying ${m.name}`, body: "Generation restarted. Retries don’t use a credit.", href: `/models/${m.id}` });
+  };
 
   return (
     <>
@@ -140,13 +207,7 @@ export default function DashboardPage() {
             />
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <button
-              aria-label="Notifications (3 unread)"
-              className="relative grid size-11 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-            >
-              <Bell className="size-[18px]" />
-              <span className="absolute right-2.5 top-2.5 size-2 rounded-full bg-rose-500 ring-2 ring-white" />
-            </button>
+            <NotificationsMenu />
             <Button onClick={() => setWizardOpen(true)}>
               <Plus className="size-4" aria-hidden />
               <span className="hidden sm:inline">Create New Model</span>
@@ -162,43 +223,66 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-slate-500">Manage your 3D assets, AR links and QR codes.</p>
         </div>
 
-        <section aria-label="Overview" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard label="Total Scans" value={totalScans.toLocaleString()} icon={ScanLine}>
-            <p className="flex items-center gap-1.5 text-sm">
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
-                <TrendingUp className="size-3.5" aria-hidden /> 18.2%
-              </span>
-              <span className="text-slate-500">vs last month</span>
-            </p>
-          </MetricCard>
-          <MetricCard label="Active AR Models" value={String(active)} icon={Layers}>
-            <p className="text-sm text-slate-500">
-              {models.length - active} draft{models.length - active === 1 ? "" : "s"} awaiting payment
-            </p>
-          </MetricCard>
-          <MetricCard label="Storage Used" value={`${storageUsed.toFixed(1)} MB`} icon={HardDrive}>
-            <div
-              className="h-2 overflow-hidden rounded-full bg-slate-100"
-              role="progressbar"
-              aria-label="Storage used"
-              aria-valuemin={0}
-              aria-valuemax={storageLimit}
-              aria-valuenow={storageUsed}
-            >
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
-                style={{ width: `${Math.min(100, (storageUsed / storageLimit) * 100)}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-slate-500">of {storageLimit} MB on Pro plan</p>
-          </MetricCard>
-        </section>
+        <OnboardingChecklist onCreate={() => setWizardOpen(true)} />
 
         <section aria-label="Models" className="mt-8">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
+              {filters
+                .filter((f) => f.value === "all" || counts[f.value] > 0)
+                .map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => setFilter(f.value)}
+                    aria-pressed={filter === f.value}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+                      filter === f.value ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100",
+                      f.value === "failed" && filter !== f.value && "text-rose-600",
+                    )}
+                  >
+                    {f.label}
+                    <span className={cn("tabular-nums text-xs", filter === f.value ? "text-slate-300" : "text-slate-400")}>{counts[f.value]}</span>
+                  </button>
+                ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {tags.length > 0 && (
+                <select
+                  value={tag}
+                  onChange={(e) => setTag(e.target.value)}
+                  aria-label="Filter by tag"
+                  className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="">All tags</option>
+                  {tags.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as Sort)}
+                aria-label="Sort models"
+                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="newest">Newest first</option>
+                <option value="scans">Most scans</option>
+                <option value="name">Name A–Z</option>
+              </select>
+              <Button variant="secondary" size="sm" onClick={exportQrCodes} disabled={!exportable.length || exporting} title="Download a ZIP with a QR code for every live model shown">
+                {exporting ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+                QR codes ({exportable.length})
+              </Button>
+            </div>
+          </div>
+
           {filtered.length ? (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map((m) => (
-                <ModelCard key={m.id} model={m} onDelete={() => removeModel(m.id)} />
+                <ModelCard key={m.id} model={m} onDelete={() => removeModel(m.id)} onRetry={() => retry(m)} />
               ))}
             </div>
           ) : (
@@ -206,11 +290,29 @@ export default function DashboardPage() {
               <div className="grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
                 <Search className="size-6" aria-hidden />
               </div>
-              <p className="mt-4 font-medium text-slate-900">{query ? `No models match “${query}”` : "No models yet"}</p>
-              <p className="mt-1 text-sm text-slate-500">Upload a video or photos to generate your first 3D model.</p>
-              <Button className="mt-5" onClick={() => setWizardOpen(true)}>
-                <Plus className="size-4" aria-hidden /> Create New Model
-              </Button>
+              <p className="mt-4 font-medium text-slate-900">
+                {query ? `No models match “${query}”` : models.length ? "No models match these filters" : "No models yet"}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {models.length ? "Try another status or tag." : "Upload a video, photos or an existing 3D file to get started."}
+              </p>
+              {models.length ? (
+                <Button
+                  variant="secondary"
+                  className="mt-5"
+                  onClick={() => {
+                    setQuery("");
+                    setFilter("all");
+                    setTag("");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : (
+                <Button className="mt-5" onClick={() => setWizardOpen(true)}>
+                  <Plus className="size-4" aria-hidden /> Create New Model
+                </Button>
+              )}
             </Card>
           )}
         </section>
@@ -219,10 +321,10 @@ export default function DashboardPage() {
       {wizardOpen && (
         <UploadWizard
           onClose={() => setWizardOpen(false)}
-          onComplete={(name, status) => {
-            const model = addModel(name, status);
+          onComplete={(input) => {
+            const model = addModel(input);
             setWizardOpen(false);
-            if (status === "active") router.push(`/models/${model.id}`);
+            if (input.status === "active") router.push(`/models/${model.id}`);
           }}
         />
       )}
