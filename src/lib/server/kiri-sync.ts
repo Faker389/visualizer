@@ -1,5 +1,5 @@
 import "server-only";
-import { prisma } from "@/lib/server/db";
+import { setEngineJobId } from "@/lib/server/models-db";
 import { env } from "@/lib/server/env";
 import { ASSET_LIMITS, HostNotAllowedError, PermanentAssetError, downloadAsset } from "@/lib/server/assets";
 import { KiriApiError, type KiriSource, createKiriJob, getKiriModelZipUrl, getKiriStatus } from "@/lib/server/kiri";
@@ -14,7 +14,7 @@ export type KiriSyncResult =
 /** Submits the capture to KIRI and links the job to the model. */
 export async function startKiriJob(modelId: string, source: KiriSource) {
   const serialize = await createKiriJob(source);
-  await prisma.model.update({ where: { id: modelId }, data: { engineJobId: serialize } });
+  await setEngineJobId(modelId, serialize);
   return serialize;
 }
 

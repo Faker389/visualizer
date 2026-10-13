@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
-import { prisma } from "@/lib/server/db";
 import { env } from "@/lib/server/env";
+import { findModelByEngineJob } from "@/lib/server/models-db";
 import { isKiriInProgress, parseKiriWebhook, tokenMatches } from "@/lib/server/kiri-format";
 import { syncKiriJob } from "@/lib/server/kiri-sync";
 
@@ -31,10 +31,7 @@ export async function POST(req: Request) {
 
   if (status !== undefined && isKiriInProgress(status)) return json({ status: "ignored", reason: "job still running" });
 
-  const model = await prisma.model.findUnique({
-    where: { engineJobId: serialize },
-    select: { id: true, status: true, viewerSlug: true },
-  });
+  const model = await findModelByEngineJob(serialize);
   if (!model) return json({ error: `Unknown job ${serialize}` }, 404);
   if (model.status !== "PROCESSING") {
     return json({ status: "ignored", reason: `model already ${model.status.toLowerCase()}` });

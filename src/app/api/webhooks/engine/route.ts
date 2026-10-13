@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/server/db";
 import { env } from "@/lib/server/env";
+import { findModelByEngineJob, SlugTakenError } from "@/lib/server/models-db";
 import { SIGNATURE_HEADER, parseEnginePayload, verifySignature } from "@/lib/server/engine-webhook";
 import { ASSET_LIMITS, PermanentAssetError, downloadAsset } from "@/lib/server/assets";
 import { completeModel, markFailed } from "@/lib/server/model-completion";
@@ -31,10 +30,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return json({ error: parsed.error }, 400);
   const payload = parsed.data;
 
-  const model = await prisma.model.findUnique({
-    where: { engineJobId: payload.job_id },
-    select: { id: true, status: true, viewerSlug: true },
-  });
+  const model = await findModelByEngineJob(payload.job_id);
   if (!model) return json({ error: `Unknown job ${payload.job_id}` }, 404);
 
   // Engines deliver at-least-once; anything not PROCESSING was already handled.
@@ -58,7 +54,7 @@ export async function POST(req: Request) {
       await markFailed(model.id, err.message);
       return json({ status: "failed", modelId: model.id, error: err.message });
     }
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    if (err instanceof SlugTakenError) {
       // Viewer slug collision (astronomically unlikely) — let the engine retry with a fresh slug.
       console.warn("[engine-webhook] viewer slug collision", { modelId: model.id });
     } else {

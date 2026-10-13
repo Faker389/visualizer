@@ -1,9 +1,6 @@
 {
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/(app)/billing/page": "app/(app)/billing/page.js",
-  "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
-  "/(app)/settings/page": "app/(app)/settings/page.js",
-  "/(app)/analytics/page": "app/(app)/analytics/page.js",
-  "/(app)/help/page": "app/(app)/help/page.js",
-  "/(app)/models/[id]/page": "app/(app)/models/[id]/page.js"
+  "/login/page": "app/login/page.js",
+  "/register/page": "app/register/page.js",
+  "/forgot-password/page": "app/forgot-password/page.js",
+  "/(app)/dashboard/page": "app/(app)/dashboard/page.js"
 }

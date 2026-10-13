@@ -1,15 +1,15 @@
 # Arcade3D — 3D / WebAR generation SaaS
 
-Next.js 15 (App Router) · Tailwind 4 · Prisma/PostgreSQL · S3 or Cloudflare R2.
+Next.js 15 (App Router) · Tailwind 4 · Firebase Auth + Firestore · S3 or Cloudflare R2.
 
 ## Setup
 
-```bash
-cp .env.example .env      # fill in DB, S3/R2, webhook secret
-npm install               # runs prisma generate
-npm run db:migrate
-npm run dev
-```
+1. In the Firebase console, enable Authentication → Email/Password and Google, then register a web app.
+2. Put the web app config in `.env.local` as `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, and `NEXT_PUBLIC_FIREBASE_APP_ID`.
+3. Create a service account (Firebase console → Project settings → Service accounts) and set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` (keep the `\n` escapes inside the quoted key).
+4. `npm install` then `npm run dev`.
+
+Firestore holds `users/{uid}` and `models/{id}`. Client reads and writes are denied in `firestore.rules`; the server uses the Admin SDK, which bypasses those rules. Deploy the composite index in `firestore.indexes.json` before the processing cron runs (`status` + `createdAt` on `models`).
 
 ## 3D engine webhook — `POST /api/webhooks/engine`
 
@@ -22,7 +22,7 @@ Source: `src/app/api/webhooks/engine/route.ts`
      "assets": { "glb": "https://…/model.glb", "usdz": "https://…/model.usdz" } }
    ```
    or `{ "event_id", "job_id", "status": "failed", "error": "…" }`. Provider-neutral; KIRI uses its own route below.
-3. Looks up the `Model` by `engineJobId`; already-handled jobs return `200 ignored` (at-least-once delivery safe).
+3. Looks up the Firestore `models` document by `engineJobId`; already-handled jobs return `200 ignored` (at-least-once delivery safe).
 4. Downloads `.glb` / `.usdz` (host allowlist `ENGINE_ASSET_HOSTS` re-checked on redirects, 150 MB cap, 90 s timeout), validates file magic, Draco-compresses the `.glb`.
 5. Uploads to S3/R2 under content-addressed keys `models/<modelId>/<sha256>.glb` with `immutable` cache headers.
 6. Atomically flips `PROCESSING → COMPLETED` with the CDN URLs and a random 10-char `viewerSlug`; the QR code encodes `VIEWER_BASE_URL/v/<viewerSlug>`.

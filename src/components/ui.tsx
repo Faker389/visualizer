@@ -52,12 +52,14 @@ type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   label?: string;
   icon?: LucideIcon;
   trailing?: ReactNode;
+  error?: string;
 };
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, icon: Icon, trailing, id, className, ...props },
+  { label, icon: Icon, trailing, error, id, className, ...props },
   ref,
 ) {
+  const errorId = error && id ? `${id}-error` : undefined;
   return (
     <div className="space-y-1.5">
       {label && (
@@ -74,12 +76,20 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             "h-11 w-full rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/15",
             Icon ? "pl-10" : "pl-3.5",
             trailing ? "pr-11" : "pr-3.5",
+            error && "border-rose-400 focus:border-rose-500 focus:ring-rose-500/15",
             className,
           )}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
           {...props}
         />
         {trailing && <div className="absolute right-1.5 top-1/2 -translate-y-1/2">{trailing}</div>}
       </div>
+      {error && (
+        <p id={errorId} className="text-xs text-rose-600">
+          {error}
+        </p>
+      )}
     </div>
   );
 });

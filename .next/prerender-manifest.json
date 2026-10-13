@@ -1,1 +1,11 @@
-{"version":4,"routes":{"/analytics":{},"/billing":{},"/settings":{}},"dynamicRoutes":{"/[section]":{"dataRoute":null,"dataRouteRegex":null,"fallback":null,"fallbackRevalidate":false,"fallbackSourceRoute":"/[section]","routeRegex":"^\\/([^/]+?)(?:\\/)?$","allowHeader":[]}},"notFoundRoutes":[],"preview":{"previewModeId":"261e7d0690a717c99eef2fc03844870d","previewModeSigningKey":"75cdc62a360cad1602d5ad1fc6c89003789423b6611937e624d445b4bdbf4eea","previewModeEncryptionKey":"0154af99d04ef7b8e8d81c5649821783424bd265f5a4b90d380f02fe5e083b4c"}}
+{
+  "version": 4,
+  "routes": {},
+  "dynamicRoutes": {},
+  "notFoundRoutes": [],
+  "preview": {
+    "previewModeId": "55349bf950ef401106c1fafea07083a8",
+    "previewModeSigningKey": "1a38950f7399189fb69378377a063a58acd0996c96d2cf3f301907e50ca96632",
+    "previewModeEncryptionKey": "ae555c7002af064f1cd87a100276cab195bda3e5619c418957c2cb86c5b3b445"
+  }
+}

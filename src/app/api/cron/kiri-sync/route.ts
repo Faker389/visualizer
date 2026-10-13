@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/server/db";
 import { env } from "@/lib/server/env";
+import { listStaleProcessing } from "@/lib/server/models-db";
 import { tokenMatches } from "@/lib/server/kiri-format";
 import { syncKiriJob } from "@/lib/server/kiri-sync";
 
@@ -23,17 +23,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const models = await prisma.model.findMany({
-    where: { status: "PROCESSING", engineJobId: { not: null }, createdAt: { lt: new Date(Date.now() - STALE_AFTER_MS) } },
-    orderBy: { createdAt: "asc" },
-    take: BATCH_SIZE,
-    select: { id: true, engineJobId: true, viewerSlug: true },
-  });
+  const models = await listStaleProcessing(new Date(Date.now() - STALE_AFTER_MS), BATCH_SIZE);
 
   const results = [];
   for (const m of models) {
     try {
-      const r = await syncKiriJob({ ...m, engineJobId: m.engineJobId! });
+      const r = await syncKiriJob(m);
       results.push({ modelId: m.id, status: r.status });
     } catch (err) {
       console.error("[kiri-sync] transient failure", { modelId: m.id, err });

@@ -7,7 +7,6 @@ import { AlertTriangle, Box, Download, EllipsisVertical, LoaderCircle, Pencil, P
 import { Badge, Button, Card } from "@/components/ui";
 import { NotificationsMenu } from "@/components/notifications-menu";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
-import { OverviewMetrics } from "@/components/overview-metrics";
 import { UploadWizard } from "@/components/upload-wizard";
 import { useActivity } from "@/components/activity-store";
 import { useModels } from "@/components/models-store";

@@ -2,8 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Box, ChartColumn, CreditCard, LifeBuoy, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { Box, ChartColumn, CreditCard, LifeBuoy, LoaderCircle, LogOut, Menu, Settings, X, type LucideIcon } from "lucide-react";
+import { auth, firebaseConfigError } from "@/lib/firebase";
+import { clearUserCookie } from "@/lib/cookies";
 import { Logo } from "@/components/logo";
 import { ActivityProvider } from "@/components/activity-store";
 import { BillingProvider } from "@/components/billing-store";
@@ -27,9 +30,12 @@ const nav: { href: string; label: string; icon: LucideIcon; match: (p: string) =
   { href: "/help", label: "Help & support", icon: LifeBuoy, match: (p) => p === "/help" },
 ];
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({ user, onNavigate }: { user: User; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { settings } = useSettings();
+  const name = user.displayName || settings.name;
+  const email = user.email || settings.email;
   return (
     <div className="flex h-full flex-col">
       <div className="px-6 py-6">
@@ -57,35 +63,64 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
       <div className="m-3 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-slate-50 p-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-amber-300 to-rose-400 text-sm font-semibold text-white">
-          {initials(settings.name)}
+          {initials(name) || "U"}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-slate-900">{settings.name}</p>
-          <p className="truncate text-xs text-slate-500">{settings.email}</p>
+          <p className="truncate text-sm font-medium text-slate-900">{name}</p>
+          <p className="truncate text-xs text-slate-500">{email}</p>
         </div>
-        <Link
-          href="/"
+        <button
+          type="button"
           aria-label="Log out"
+          onClick={() => {
+            clearUserCookie();
+            void signOut(auth).finally(() => router.push("/login"));
+          }}
           className="grid size-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <LogOut className="size-4" />
-        </Link>
+        </button>
       </div>
     </div>
   );
 }
 
+function useFirebaseUser() {
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+  useEffect(() => {
+    if (firebaseConfigError() || !auth) {
+      setUser(null);
+      return;
+    }
+    return onAuthStateChanged(auth, setUser);
+  }, []);
+  return user;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const user = useFirebaseUser();
 
   useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (user === null) router.replace("/login");
+  }, [user, router]);
+
+  if (!user) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-50">
+        <LoaderCircle className="size-6 animate-spin text-indigo-600" aria-label="Loading" />
+      </div>
+    );
+  }
 
   return (
     <Providers>
       <div className="min-h-screen bg-slate-50">
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200/70 bg-white lg:block">
-          <Sidebar />
+          <Sidebar user={user} />
         </aside>
 
         {open && (
@@ -99,7 +134,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <X className="size-5" />
               </button>
-              <Sidebar onNavigate={() => setOpen(false)} />
+              <Sidebar user={user} onNavigate={() => setOpen(false)} />
             </aside>
           </div>
         )}

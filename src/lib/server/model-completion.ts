@@ -1,5 +1,5 @@
 import "server-only";
-import { prisma } from "@/lib/server/db";
+import { completeIfProcessing, failIfProcessing } from "@/lib/server/models-db";
 import { env } from "@/lib/server/env";
 import { assertGlb, assertUsdz, compressGlb } from "@/lib/server/assets";
 import { uploadModelAsset } from "@/lib/server/storage";
@@ -31,19 +31,13 @@ export async function completeModel(
   const slug = model.viewerSlug ?? viewerSlug();
 
   // Status guard makes concurrent duplicate deliveries safe: only one flips PROCESSING -> COMPLETED.
-  const { count } = await prisma.model.updateMany({
-    where: { id: model.id, status: "PROCESSING" },
-    data: {
-      status: "COMPLETED",
-      glbS3Url,
-      usdzS3Url,
-      glbSizeBytes: glb.byteLength,
-      viewerSlug: slug,
-      completedAt: new Date(),
-      failureReason: null,
-    },
+  const updated = await completeIfProcessing(model.id, {
+    glbS3Url,
+    usdzS3Url,
+    glbSizeBytes: glb.byteLength,
+    viewerSlug: slug,
   });
-  if (count === 0) return { status: "ignored", reason: "completed by a concurrent delivery" };
+  if (!updated) return { status: "ignored", reason: "completed by a concurrent delivery" };
 
   return {
     status: "completed",
@@ -56,8 +50,5 @@ export async function completeModel(
 }
 
 export async function markFailed(modelId: string, reason: string) {
-  await prisma.model.updateMany({
-    where: { id: modelId, status: "PROCESSING" },
-    data: { status: "FAILED", failureReason: reason.slice(0, 1000) },
-  });
+  await failIfProcessing(modelId, reason);
 }

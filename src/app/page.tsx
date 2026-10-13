@@ -1,5 +1,5 @@
-import { AuthFlow } from "@/components/auth-flow";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <AuthFlow />;
+  redirect("/login");
 }
