@@ -41,24 +41,27 @@ const captureTips = [
   `Videos: 1–2 minutes, up to 1080p and ${LIMITS.maxVideoSec / 60} minutes.`,
 ];
 
-function uploadCapture(body: FormData, onProgress: (percent: number) => void) {
-  return new Promise<{ id: string }>((resolve, reject) => {
+async function readJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (res.status === 413) throw new Error("This capture is too large to send through the site.");
+    throw new Error(text.replace(/\s+/g, " ").slice(0, 180) || "Could not start the scan.");
+  }
+}
+
+function putFile(url: string, file: File, contentType: string, onProgress: (loaded: number) => void) {
+  return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/models/capture");
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 85));
+      if (event.lengthComputable) onProgress(event.loaded);
     };
-    xhr.onload = () => {
-      const data = JSON.parse(xhr.responseText || "{}") as { id?: string; error?: string };
-      if (xhr.status >= 200 && xhr.status < 300 && data.id) {
-        onProgress(100);
-        resolve({ id: data.id });
-        return;
-      }
-      reject(new Error(data.error || "Could not start the scan."));
-    };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Could not store the capture. Try again.")));
     xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
-    xhr.send(body);
+    xhr.send(file);
   });
 }
 
@@ -252,11 +255,41 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
     setSubmitting(true);
     setProgress(0);
     setStep(2);
-    const body = new FormData();
-    body.set("name", name.trim());
-    files.forEach((file) => body.append("files", file));
     try {
-      const result = await uploadCapture(body, setProgress);
+      const prepared = await fetch("/api/models/capture/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          files: files.map((file) => ({
+            type: file.type || (/\.(mp4|mov|webm)$/i.test(file.name) ? "video/mp4" : "image/jpeg"),
+            size: file.size,
+          })),
+        }),
+      });
+      const plan = await readJson<{ error?: string; uploads?: { url: string; path: string; contentType: string }[] }>(prepared);
+      if (!prepared.ok || !plan.uploads?.length) throw new Error(plan.error || "Could not start the upload.");
+
+      const loaded = files.map(() => 0);
+      await Promise.all(
+        plan.uploads.map((upload, index) =>
+          putFile(upload.url, files[index], upload.contentType, (amount) => {
+            loaded[index] = amount;
+            const sent = loaded.reduce((sum, value) => sum + value, 0);
+            setProgress(Math.round((sent / Math.max(totalSize, 1)) * 85));
+          }),
+        ),
+      );
+      setProgress(90);
+
+      const started = await fetch("/api/models/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), paths: plan.uploads.map((upload) => upload.path) }),
+      });
+      const result = await readJson<{ id?: string; error?: string }>(started);
+      if (!started.ok || !result.id) throw new Error(result.error || "Could not start the scan.");
+      setProgress(100);
       onComplete({
         id: result.id,
         name: name.trim(),

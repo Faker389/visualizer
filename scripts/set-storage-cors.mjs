@@ -35,7 +35,7 @@ const bucket = getStorage().bucket(bucketName);
 await bucket.setCorsConfiguration([
   {
     origin: ["*"],
-    method: ["GET", "HEAD"],
+    method: ["GET", "HEAD", "PUT"],
     responseHeader: ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Content-Disposition"],
     maxAgeSeconds: 3600,
   },

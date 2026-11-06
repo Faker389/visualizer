@@ -11,10 +11,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(app)/layout.js"
     ],
-    "/(app)/dashboard/page": [
+    "/(app)/models/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(app)/dashboard/page.js"
+      "static/chunks/app/(app)/models/[id]/page.js"
     ],
     "/api/models/[id]/route": [
       "static/chunks/webpack.js",
