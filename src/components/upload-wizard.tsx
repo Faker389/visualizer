@@ -47,6 +47,7 @@ async function readJson<T>(res: Response): Promise<T> {
     return JSON.parse(text) as T;
   } catch {
     if (res.status === 413) throw new Error("This capture is too large to send through the site.");
+    if (text.trimStart().startsWith("<")) throw new Error("The server failed before it could accept the video. Redeploy after the server environment variables are set.");
     throw new Error(text.replace(/\s+/g, " ").slice(0, 180) || "Could not start the scan.");
   }
 }

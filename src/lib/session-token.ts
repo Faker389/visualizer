@@ -2,13 +2,11 @@
 
 import { SignJWT, jwtVerify } from "jose";
 
-const secret = process.env.SESSION_SECRET;
-
-if (!secret) {
-  throw new Error("SESSION_SECRET is not configured");
+function key() {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is not configured");
+  return new TextEncoder().encode(secret);
 }
-
-const key = new TextEncoder().encode(secret);
 
 export async function createSessionToken(userId: string) {
   return new SignJWT({})
@@ -18,12 +16,12 @@ export async function createSessionToken(userId: string) {
     .setExpirationTime("7d")
     .setIssuer("your-app")
     .setAudience("your-app-users")
-    .sign(key);
+    .sign(key());
 }
 
 export async function verifySessionToken(token: string) {
   try {
-    const { payload } = await jwtVerify(token, key, {
+    const { payload } = await jwtVerify(token, key(), {
       issuer: "your-app",
       audience: "your-app-users",
     });
