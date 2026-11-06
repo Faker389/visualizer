@@ -14,6 +14,9 @@ for (const [clientName, serverName] of [
   if (value) firebaseWebEnv[clientName] = value;
 }
 
+const rawKey = process.env.NEXT_PUBLIC_RAWKEY || process.env.RAWKEY;
+if (rawKey) firebaseWebEnv.NEXT_PUBLIC_RAWKEY = rawKey;
+
 const nextConfig: NextConfig = {
   env: firebaseWebEnv,
   serverExternalPackages: ["draco3dgltf", "firebase-admin"],

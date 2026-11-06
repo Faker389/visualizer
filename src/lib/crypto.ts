@@ -1,12 +1,13 @@
 import crypto from "crypto"
-import { getUserCookie } from "./cookies"
 import { userInterface } from "./types"
 
 const algorithm = "aes-256-gcm"
 
-// Generate a proper 32-byte key from your secret
-const rawKey = process.env.RAWKEY!
-const secretKey = crypto.createHash("sha256").update(rawKey).digest()
+function secretKey() {
+  const rawKey = process.env.NEXT_PUBLIC_RAWKEY
+  if (!rawKey) throw new Error("Encryption key is missing from this build.")
+  return crypto.createHash("sha256").update(rawKey).digest()
+}
 
 // Encrypt a single field
 export interface EncryptedUserSimple {
@@ -19,7 +20,7 @@ export interface EncryptedUserSimple {
 
 export function encryptSimple(user:userInterface): EncryptedUserSimple|null {
   const iv = crypto.randomBytes(16)
-  const cipher = crypto.createCipheriv(algorithm, secretKey, iv)
+  const cipher = crypto.createCipheriv(algorithm, secretKey(), iv)
   const newUserDB:userInterface = {
     id:user.id ,
     email:user.email,
@@ -52,7 +53,7 @@ export function decryptSimple(encryptedData: EncryptedUserSimple): userInterface
   const ivBuffer = Buffer.from(encryptedData.iv, "hex")
   const tagBuffer = Buffer.from(encryptedData.tag, "hex")
   
-  const decipher = crypto.createDecipheriv(algorithm, secretKey, ivBuffer)
+  const decipher = crypto.createDecipheriv(algorithm, secretKey(), ivBuffer)
   decipher.setAuthTag(tagBuffer)
   
   let decrypted = decipher.update(encryptedData.encryptedData, "hex", "utf8")
