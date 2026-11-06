@@ -1,6 +1,5 @@
 import "server-only";
 import { z } from "zod";
-import { env } from "@/lib/server/env";
 
 /** Thin client for https://docs.kiriengine.app (Photo Scan). */
 
@@ -16,17 +15,25 @@ export class KiriApiError extends Error {
 
 const envelope = z.object({ code: z.number(), msg: z.string().nullish(), data: z.unknown() });
 
-async function kiri<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
-  const { KIRI_API_BASE, KIRI_API_KEY } = env();
-  if (!KIRI_API_KEY) throw new Error("KIRI_API_KEY is not configured");
+function kiriConfig() {
+  const key = process.env.KIRI_API_KEY;
+  const base = (process.env.KIRI_API_BASE || "https://api.kiriengine.app/api").replace(/\/+$/, "");
+  if (!key) throw new Error("KIRI_API_KEY is not configured");
+  return { base, key };
+}
 
-  const res = await fetch(`${KIRI_API_BASE}${path}`, {
+async function kiri<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+  const { base, key } = kiriConfig();
+
+  const res = await fetch(`${base}${path}`, {
     ...init,
-    headers: { Authorization: `Bearer ${KIRI_API_KEY}`, ...init.headers },
+    headers: { Authorization: `Bearer ${key}`, ...init.headers },
     signal: AbortSignal.timeout(init.body ? 10 * 60_000 : 30_000),
   });
   const body = envelope.safeParse(await res.json().catch(() => null));
-  if (!res.ok || !body.success || body.data.code !== 0) {
+  // Docs use code 0. This account's upload endpoint returns code 200 with msg "success".
+  const accepted = body.success && (body.data.code === 0 || (body.data.code === 200 && (body.data.msg ?? "").toLowerCase() === "success"));
+  if (!res.ok || !accepted) {
     const detail = body.success ? ` (code ${body.data.code}: ${body.data.msg ?? ""})` : "";
     throw new KiriApiError(`KIRI ${path.split("?")[0]} failed: HTTP ${res.status}${detail}`, res.status, body.success ? body.data.code : undefined);
   }

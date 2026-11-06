@@ -30,6 +30,8 @@ export type ArModel = {
   ctaUrl: string;
   placement: Placement;
   dimensionsCm: { w: number; h: number; d: number } | null;
+  /** True when a real engine job owns this model, so the UI must not mark it live on a timer. */
+  remote?: boolean;
 };
 
 const SAMPLE_ASSETS = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models";
@@ -91,6 +93,14 @@ export const formatDate = (iso: string) =>
 
 export const viewerPath = (slug: string) => `/v/${slug}`;
 export const shortUrl = (slug: string, domain: string) => `${domain}${viewerPath(slug)}`;
+
+const PLACEHOLDER_VIEWER_DOMAINS = new Set(["ar.yourdomain.com", "ar.my-saas.com"]);
+
+/** Public link encoded in the QR code. A placeholder domain uses the site you're actually on. */
+export function viewerUrl(slug: string, domain: string, origin = "") {
+  if ((!domain || PLACEHOLDER_VIEWER_DOMAINS.has(domain)) && origin) return `${origin.replace(/\/+$/, "")}${viewerPath(slug)}`;
+  return `https://${domain}${viewerPath(slug)}`;
+}
 
 export const deviceSplit = [
   { label: "iOS", share: 0.58 },

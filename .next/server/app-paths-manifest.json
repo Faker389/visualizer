@@ -1,6 +1,6 @@
 {
-  "/login/page": "app/login/page.js",
-  "/register/page": "app/register/page.js",
-  "/forgot-password/page": "app/forgot-password/page.js",
-  "/(app)/dashboard/page": "app/(app)/dashboard/page.js"
+  "/api/models/[id]/route": "app/api/models/[id]/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
+  "/(app)/models/[id]/page": "app/(app)/models/[id]/page.js"
 }

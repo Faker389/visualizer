@@ -2,6 +2,7 @@ import "server-only";
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 function adminApp(): App {
   const existing = getApps()[0];
@@ -23,4 +24,10 @@ export function db(): Firestore {
 
 export function adminAuth(): Auth {
   return getAuth(adminApp());
+}
+
+export function modelBucket() {
+  const name = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET;
+  if (!name) throw new Error("Firebase Storage bucket is not configured.");
+  return getStorage(adminApp()).bucket(name);
 }

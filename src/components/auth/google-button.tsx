@@ -6,9 +6,9 @@ import { signInWithPopup } from "firebase/auth";
 import { Button } from "@/components/ui";
 import { auth, firebaseConfigError, provider } from "@/lib/firebase";
 import { addNewUserToDb, getUserByCredential, updateUserSignInMethod } from "@/lib/dbActions";
-import { CookieUser, saveUserCookie } from "@/lib/cookies";
 import { normalize, userInterface } from "@/lib/types";
 import { useAlertStore } from "@/lib/useAlert";
+import { createSession } from "@/lib/session";
 
 function GoogleIcon() {
   return (
@@ -49,12 +49,11 @@ export function GoogleButton({ disabled }: { disabled?: boolean }) {
 
         const refreshedUser = await getUserByCredential("id", userId);
         if (refreshedUser) {
-          saveUserCookie({ ...refreshedUser });
+          await createSession(userId);
         }
-
         setTimeout(() => {
           router.push("/");
-        }, 1000);
+        }, 10000);
         return;
       }
 
@@ -66,7 +65,7 @@ export function GoogleButton({ disabled }: { disabled?: boolean }) {
         authMethod: "google",
       };
       if (firebaseUser.photoURL) newUserDB.photoURL = firebaseUser.photoURL;
-      const newUserCookie: CookieUser = {
+      const newUserCookie: userInterface = {
         id: userId,
         name: normalize(firebaseUser.displayName!),
         veryfiedEmail: true,
@@ -76,8 +75,8 @@ export function GoogleButton({ disabled }: { disabled?: boolean }) {
 
       try {
         await addNewUserToDb(newUserDB);
-        saveUserCookie(newUserCookie);
         showAlert("Zapisano użytkownika", "success");
+        await createSession(userId);
       } catch {
         showAlert("Błąd podczas zapisywania użytkownika", "error");
       }

@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useOptionalActivity } from "@/components/activity-store";
 import { FALLBACK_GLB, models as seed, type ArModel, type ModelStatus } from "@/lib/models";
 
-export type NewModel = { name: string; status: ModelStatus; source: ArModel["source"]; fileSize?: string; glbUrl?: string };
+export type NewModel = { name: string; status: ModelStatus; source: ArModel["source"]; fileSize?: string; glbUrl?: string; id?: string; remote?: boolean };
 export type ViewerEvent = "scan" | "arOpen" | "shopClick";
 
 type Store = {
@@ -87,11 +87,57 @@ export function ModelsProvider({ children }: { children: ReactNode }) {
     if (hydrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(models));
   }, [models, hydrated]);
 
+  const remoteKey = models.filter((m) => m.remote).map((m) => `${m.id}:${m.status}`).join(",");
+
+  useEffect(() => {
+    if (!hydrated || !remoteKey) return;
+    let cancelled = false;
+    const entries = remoteKey.split(",").map((part) => {
+      const [id, status] = part.split(":");
+      return { id, status };
+    });
+
+    const tick = async (onlyProcessing: boolean) => {
+      for (const entry of entries) {
+        if (onlyProcessing && entry.status !== "processing") continue;
+        const res = await fetch(`/api/models/${entry.id}`).catch(() => null);
+        if (!res?.ok || cancelled) continue;
+        const data = (await res.json()) as { status?: string; glbUrl?: string; viewerSlug?: string | null; failureReason?: string };
+        if (data.status === "active" && data.glbUrl) {
+          const name = models.find((m) => m.id === entry.id)?.name ?? "Model";
+          setModels((prev) =>
+            prev.map((m) => {
+              if (m.id !== entry.id) return m;
+              const slug = data.viewerSlug || m.slug;
+              if (m.status === "active" && m.glbUrl === data.glbUrl && m.slug === slug) return m;
+              return { ...m, status: m.status === "failed" ? m.status : "active", glbUrl: data.glbUrl!, slug };
+            }),
+          );
+          if (entry.status === "processing") {
+            notifyRef.current?.({ kind: "success", title: `${name} is ready`, body: "KIRI finished the mesh. Its QR code now opens the model in AR.", href: `/models/${entry.id}` });
+          }
+        } else if (data.status === "failed" && entry.status === "processing") {
+          setModels((prev) => prev.map((m) => (m.id === entry.id && m.status === "processing" ? { ...m, status: "failed", failureReason: data.failureReason } : m)));
+        }
+      }
+    };
+
+    void tick(false);
+    if (!entries.some((entry) => entry.status === "processing")) return;
+    const timer = setInterval(() => void tick(true), 20_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // `models` is read only to name the notification. `remoteKey` decides when to poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, remoteKey]);
+
   // Stand-in for the engine webhook: processing models finish after a short delay.
   useEffect(() => {
     if (!hydrated) return;
     for (const m of models) {
-      if (m.status !== "processing" || timers.current.has(m.id)) continue;
+      if (m.status !== "processing" || m.remote || timers.current.has(m.id)) continue;
       timers.current.set(
         m.id,
         setTimeout(() => {
@@ -111,7 +157,8 @@ export function ModelsProvider({ children }: { children: ReactNode }) {
   const addModel = useCallback((input: NewModel) => {
     const model: ArModel = {
       ...defaults,
-      id: `${slugify(input.name)}-${Date.now().toString(36)}`,
+      id: input.id ?? `${slugify(input.name)}-${Date.now().toString(36)}`,
+      remote: input.remote,
       name: input.name,
       status: input.status,
       source: input.source,

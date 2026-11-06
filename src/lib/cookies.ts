@@ -1,15 +1,11 @@
 import Cookies from "js-cookie"
 import { userInterface } from "./types"
 
-export type CookieUser = Omit<
-  userInterface,
-  "favouriteBeats" | "ownedBeats"
->
 
-export const COOKIE_KEY = "beaty_user_cookie"
+export const COOKIE_KEY = "userCookie"
 
 // Save cookie
-export const saveUserCookie = (data: CookieUser) => {
+export const saveUserCookie = (data: userInterface) => {
   Cookies.set(COOKIE_KEY, JSON.stringify(data), {
     expires: 30, // 30 days
     secure: process.env.NODE_ENV === "production", // only secure on prod
@@ -19,7 +15,7 @@ export const saveUserCookie = (data: CookieUser) => {
 }
 
 // Get cookie
-export const getUserCookie = (): CookieUser | null => {
+export const getUserCookie = (): userInterface | null => {
   const raw = Cookies.get(COOKIE_KEY)
   if (!raw) return null
 

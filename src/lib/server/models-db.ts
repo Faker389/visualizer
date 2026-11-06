@@ -20,6 +20,53 @@ export type ModelJob = {
 
 const models = () => db().collection("models");
 
+/** Creates a PROCESSING model owned by the signed-in user. The KIRI job id is attached afterwards. */
+export async function createCaptureModel(input: { userId: string; name: string; sourceKind: "video" | "images"; fileCount: number }) {
+  const ref = models().doc();
+  await ref.set({
+    userId: input.userId,
+    name: input.name,
+    status: "PROCESSING",
+    source: input.sourceKind,
+    fileCount: input.fileCount,
+    engineJobId: null,
+    viewerSlug: null,
+    glbS3Url: null,
+    usdzS3Url: null,
+    failureReason: null,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function getOwnedModel(id: string, userId: string) {
+  const snap = await models().doc(id).get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  if (!data || data.userId !== userId) return null;
+  return {
+    id,
+    status: data.status as ModelStatus,
+    viewerSlug: typeof data.viewerSlug === "string" ? data.viewerSlug : null,
+    engineJobId: typeof data.engineJobId === "string" ? data.engineJobId : null,
+    glbUrl: typeof data.glbS3Url === "string" ? data.glbS3Url : null,
+    failureReason: typeof data.failureReason === "string" ? data.failureReason : null,
+  };
+}
+
+/** Public viewer payload. Only a finished model with a file is visible. */
+export async function findPublicModel(slug: string) {
+  const snap = await models().where("viewerSlug", "==", slug).limit(1).get();
+  const doc = snap.docs[0];
+  if (!doc) return null;
+  const data = doc.data();
+  if (data.status !== "COMPLETED" || typeof data.glbS3Url !== "string" || !data.glbS3Url) return null;
+  return {
+    name: typeof data.name === "string" && data.name ? data.name : "Model",
+    glbUrl: data.glbS3Url as string,
+  };
+}
+
 function toDate(value: unknown): Date {
   if (value instanceof Timestamp) return value.toDate();
   if (value instanceof Date) return value;

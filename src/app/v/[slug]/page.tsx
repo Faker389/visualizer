@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { Box, ExternalLink, Ruler, ScanLine, Smartphone } from "lucide-react";
-import { ModelViewer } from "@/components/model-viewer";
+import { ModelViewer, type ModelViewerHandle } from "@/components/model-viewer";
 import { ModelsProvider, useModels } from "@/components/models-store";
 import { SettingsProvider, useSettings } from "@/components/settings-store";
 import { cn } from "@/lib/cn";
@@ -61,13 +61,54 @@ function DesktopQr({ dark }: { dark: boolean }) {
   );
 }
 
+type RemoteModel = { name: string; glbUrl: string };
+
+function sceneViewerIntent(glbUrl: string, name: string) {
+  const query = new URLSearchParams({
+    file: glbUrl,
+    mode: "ar_preferred",
+    title: name,
+    resizable: "true",
+    enable_vertical_placement: "true",
+  });
+  const fallback = encodeURIComponent(window.location.href);
+  return `intent://arvr.google.com/scene-viewer/1.0?${query.toString()}#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;S.browser_fallback_url=${fallback};end;`;
+}
+
 function Viewer() {
   const { slug } = useParams<{ slug: string }>();
   const embed = useSearchParams().get("embed") === "1";
   const { models, hydrated, track } = useModels();
   const { settings } = useSettings();
-  const model = models.find((m) => m.slug === slug);
-  const live = model?.status === "active";
+  const local = models.find((m) => m.slug === slug);
+  const [remote, setRemote] = useState<RemoteModel | null | undefined>(undefined);
+  const [phone, setPhone] = useState<"android" | "ios" | "other" | null>(null);
+  const [meshReady, setMeshReady] = useState(false);
+  const viewerRef = useRef<ModelViewerHandle>(null);
+  const live = local ? local.status === "active" : Boolean(remote);
+
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    if (/Android/i.test(ua)) setPhone("android");
+    else if (/iPhone|iPad|iPod/i.test(ua)) setPhone("ios");
+    else setPhone("other");
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || local) return;
+    let cancelled = false;
+    fetch(`/api/view/${slug}`)
+      .then((res) => (res.ok ? (res.json() as Promise<RemoteModel>) : null))
+      .then((data) => {
+        if (!cancelled) setRemote(data);
+      })
+      .catch(() => {
+        if (!cancelled) setRemote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, local, slug]);
 
   useEffect(() => {
     if (!hydrated || !live) return;
@@ -78,19 +119,35 @@ function Viewer() {
     if (settings.trackScans) track(slug, "scan");
   }, [hydrated, live, slug, settings.trackScans, track]);
 
-  useEffect(() => {
-    if (model) document.title = `${model.name} · ${settings.workspaceName}`;
-  }, [model, settings.workspaceName]);
+  const view = local
+    ? { name: local.name, glbUrl: local.glbUrl, ctaUrl: local.ctaUrl, ctaLabel: local.ctaLabel, dims: local.dimensionsCm, placement: local.placement === "default" ? settings.arPlacement : local.placement }
+    : remote
+      ? { name: remote.name, glbUrl: remote.glbUrl, ctaUrl: "", ctaLabel: "", dims: null, placement: "floor" as const }
+      : null;
 
-  if (!hydrated) return <main className="min-h-dvh bg-slate-50" />;
-  if (!model) return <Unavailable title="Model not found" text="This link may be mistyped, or the model was deleted." />;
-  if (model.status === "processing") return <Unavailable title="Almost ready" text="This 3D model is still being prepared. Check back in a few minutes." />;
-  if (!live) return <Unavailable title="This model isn’t available" text="It has been taken offline by its owner." />;
+  const viewName = view?.name;
+  useEffect(() => {
+    if (viewName) document.title = `${viewName} · ${settings.workspaceName}`;
+  }, [viewName, settings.workspaceName]);
+
+  const placeOnSurface = () => {
+    if (!view) return;
+    if (phone === "android") {
+      window.location.href = sceneViewerIntent(view.glbUrl, view.name);
+      return;
+    }
+    void viewerRef.current?.activateAR();
+  };
+
+  if (!hydrated || (!local && remote === undefined)) return <main className="min-h-dvh bg-slate-50" />;
+  if (local?.status === "processing") return <Unavailable title="Almost ready" text="This 3D model is still being prepared. Check back in a few minutes." />;
+  if (!view || (local && !live)) return <Unavailable title={local ? "This model isn’t available" : "Model not found"} text={local ? "It has been taken offline by its owner." : "This link may be mistyped, or the model was deleted."} />;
 
   const dark = settings.viewerBackground === "dark";
   const brand = settings.brandColor;
-  const placement = model.placement === "default" ? settings.arPlacement : model.placement;
-  const dims = model.dimensionsCm;
+  const placement = view.placement;
+  const dims = view.dims;
+  const showPlace = phone === "android" || phone === "ios";
 
   return (
     <main className={cn("flex h-dvh flex-col", backgrounds[settings.viewerBackground])}>
@@ -106,8 +163,9 @@ function Viewer() {
       )}
 
       <ModelViewer
-        src={model.glbUrl}
-        alt={`3D model of ${model.name}`}
+        ref={viewerRef}
+        src={view.glbUrl}
+        alt={`3D model of ${view.name}`}
         className="min-h-0 flex-1"
         ar
         arPlacement={placement}
@@ -115,21 +173,18 @@ function Viewer() {
         autoRotate={settings.autoRotate}
         cameraControls={settings.cameraControls}
         shadowIntensity={settings.shadowIntensity}
+        onLoad={() => setMeshReady(true)}
         onArStart={() => settings.trackScans && track(slug, "arOpen")}
-        arButton={
-          <button
-            slot="ar-button"
-            className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-lg"
-            style={{ backgroundColor: brand }}
-          >
-            <ScanLine className="size-4" aria-hidden /> View in your space
-          </button>
-        }
       />
 
       <footer className={cn("flex flex-wrap items-end justify-between gap-3", embed ? "p-3" : "px-5 pb-5")}>
         <div className="min-w-0">
-          <h1 className={cn("truncate font-semibold tracking-tight", embed ? "text-base" : "text-xl")}>{model.name}</h1>
+          <h1 className={cn("truncate font-semibold tracking-tight", embed ? "text-base" : "text-xl")}>{view.name}</h1>
+          {showPlace && (
+            <p className={cn("mt-1 max-w-xs text-xs", dark ? "text-slate-300" : "text-slate-500")}>
+              Point the camera at a table or floor, then tap that surface to set the object down.
+            </p>
+          )}
           {settings.showBranding && (
             <a
               href="/"
@@ -142,16 +197,27 @@ function Viewer() {
         </div>
         <div className="flex items-end gap-3">
           {!embed && <DesktopQr dark={dark} />}
-          {model.ctaUrl && (
+          {showPlace && (
+            <button
+              type="button"
+              onClick={placeOnSurface}
+              disabled={phone === "ios" && !meshReady}
+              className="inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-semibold text-white shadow-lg disabled:opacity-60"
+              style={{ backgroundColor: brand }}
+            >
+              <ScanLine className="size-4" aria-hidden /> {phone === "ios" && !meshReady ? "Loading camera…" : "Place on this surface"}
+            </button>
+          )}
+          {view.ctaUrl && (
             <a
-              href={model.ctaUrl}
+              href={view.ctaUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => settings.trackScans && track(slug, "shopClick")}
               className="inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-lg transition hover:brightness-110"
               style={{ backgroundColor: brand }}
             >
-              {model.ctaLabel || "Shop now"} <ExternalLink className="size-4" aria-hidden />
+              {view.ctaLabel || "Shop now"} <ExternalLink className="size-4" aria-hidden />
             </a>
           )}
         </div>

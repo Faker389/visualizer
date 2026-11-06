@@ -38,7 +38,7 @@ import { useBilling } from "@/components/billing-store";
 import { useModels } from "@/components/models-store";
 import { useSettings } from "@/components/settings-store";
 import { formatStorage } from "@/lib/billing";
-import { dailyScans, formatDate, isLive, shortUrl, viewerPath, type ArModel, type Placement } from "@/lib/models";
+import { dailyScans, formatDate, isLive, viewerPath, viewerUrl, type ArModel, type Placement } from "@/lib/models";
 import { downloadBlob, downloadHref, fileSafe, qrPngDataUrl, qrSvg } from "@/lib/qr";
 import { cn } from "@/lib/cn";
 
@@ -255,7 +255,7 @@ function QrCard({ model, url, live }: { model: ArModel; url: string; live: boole
     ? presetSwatches
     : [{ name: "Workspace default", value: settings.qrColor }, ...presetSwatches];
   const style = useMemo(() => ({ color, errorCorrectionLevel: settings.qrErrorCorrection }), [color, settings.qrErrorCorrection]);
-  const fullUrl = `https://${url}`;
+  const fullUrl = url.startsWith("http") ? url : `https://${url}`;
 
   useEffect(() => {
     qrSvg(fullUrl, style).then(setSvg);
@@ -297,7 +297,10 @@ function QrCard({ model, url, live }: { model: ArModel; url: string; live: boole
           dangerouslySetInnerHTML={{ __html: svg }}
         />
         <div className="flex-1 space-y-3">
-          <p className="text-sm text-slate-500">Print it on packaging, flyers or in-store displays. Scanning opens the model in AR, with no app needed.</p>
+          <p className="text-sm text-slate-500">Scanning opens the model on a phone. Tap “Place on this surface”, point at a table or floor, then tap that surface to set the object down.</p>
+          {(fullUrl.startsWith("http://localhost") || fullUrl.startsWith("http://127.0.0.1")) && (
+            <p className="text-sm text-amber-700">This code points at this computer. Open the site from your Wi-Fi address, like http://192.168.x.x:3000, then download the QR again. A phone cannot open localhost.</p>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={downloadPng} tabIndex={live ? 0 : -1}>
               <Download className="size-4" aria-hidden /> PNG
@@ -359,7 +362,7 @@ function EmbedCard({ model, url }: { model: ArModel; url: string }) {
   const { completeOnboarding } = useActivity();
   const { copied, copy } = useCopy();
   const [height, setHeight] = useState(480);
-  const snippet = `<iframe src="https://${url}?embed=1" title="${model.name.replace(/"/g, "&quot;")} in 3D and AR" width="100%" height="${height}" style="border:0;border-radius:16px" allow="xr-spatial-tracking; fullscreen" loading="lazy"></iframe>`;
+  const snippet = `<iframe src="${url.startsWith("http") ? url : `https://${url}`}?embed=1" title="${model.name.replace(/"/g, "&quot;")} in 3D and AR" width="100%" height="${height}" style="border:0;border-radius:16px" allow="xr-spatial-tracking; fullscreen; camera" loading="lazy"></iframe>`;
 
   return (
     <SectionCard
@@ -554,7 +557,10 @@ export default function ModelDetailPage() {
   const { notify } = useActivity();
   const { copied, copy } = useCopy();
   const [notice, setNotice] = useState("");
+  const [origin, setOrigin] = useState("");
   const model = models.find((m) => m.id === id);
+
+  useEffect(() => setOrigin(window.location.origin), []);
 
   if (!model) {
     return (
@@ -572,7 +578,7 @@ export default function ModelDetailPage() {
   }
 
   const live = isLive(model);
-  const url = shortUrl(model.slug, settings.viewerDomain);
+  const url = viewerUrl(model.slug, settings.viewerDomain, origin);
   const liveCount = models.filter(isLive).length;
   const slotsFull = plan.liveModels !== null && liveCount >= plan.liveModels;
   const canToggle = model.status === "active" || model.status === "unpublished";
@@ -688,7 +694,7 @@ export default function ModelDetailPage() {
                 onFocus={(e) => e.currentTarget.select()}
                 className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 font-mono text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/15"
               />
-              <Button onClick={() => copy(`https://${url}`)} disabled={!live} className="shrink-0">
+              <Button onClick={() => copy(url)} disabled={!live} className="shrink-0">
                 {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
                 {copied ? "Copied" : "Copy Link"}
               </Button>

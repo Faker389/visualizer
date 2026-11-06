@@ -12,8 +12,8 @@ import { FieldErrors, readFields, validate } from "@/lib/errorHandling";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { getUserByCredential } from "@/lib/dbActions";
 import { useAlertStore } from "@/lib/useAlert";
-import { saveUserCookie } from "@/lib/cookies";
 import { useRouter } from "next/navigation";
+import { createSession } from "@/lib/session";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,14 +42,7 @@ export default function LoginPage() {
         showAlert('Nie udało sie zalogować!',"error",)
         return;
       }
-      const objectToPass ={
-        id: user.id,
-        name: user.name,
-        veryfiedEmail:user.veryfiedEmail,
-        email:user.email,
-        authMethod:user.authMethod
-      }
-      await saveUserCookie(objectToPass)
+        await createSession(user.id);
       showAlert("Zalogowano!","success");
       setTimeout(() => {
         router.push("/");

@@ -1,6 +1,5 @@
 import "server-only";
 import { setEngineJobId } from "@/lib/server/models-db";
-import { env } from "@/lib/server/env";
 import { ASSET_LIMITS, HostNotAllowedError, PermanentAssetError, downloadAsset } from "@/lib/server/assets";
 import { KiriApiError, type KiriSource, createKiriJob, getKiriModelZipUrl, getKiriStatus } from "@/lib/server/kiri";
 import { KIRI_CODE, KIRI_STATUS, extractGlbFromZip } from "@/lib/server/kiri-format";
@@ -42,7 +41,9 @@ export async function syncKiriJob(model: { id: string; engineJobId: string; view
   }
 
   try {
-    const zip = await downloadAsset(zipUrl, env().ENGINE_ASSET_HOSTS, ASSET_LIMITS.zip);
+    const zipHost = new URL(zipUrl).hostname.toLowerCase();
+    const allowedHosts = [...new Set([...(process.env.ENGINE_ASSET_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean), zipHost])];
+    const zip = await downloadAsset(zipUrl, allowedHosts, ASSET_LIMITS.zip);
     const glb = extractGlbFromZip(zip, ASSET_LIMITS.glb);
     // No .usdz: <model-viewer> generates one on the fly for iOS Quick Look when ios-src is omitted.
     return await completeModel(model, glb, null);

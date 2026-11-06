@@ -28,8 +28,7 @@ import { cn } from "@/lib/cn";
 type Step = 1 | 2 | 3;
 type Mode = "capture" | "file";
 
-const tasks = ["Extracting frames", "Reconstructing the mesh", "Optimizing for WebAR"];
-const PROCESSING_MS = 7000;
+const tasks = ["Uploading your capture", "Starting the KIRI scan", "Queued for reconstruction"];
 
 /** KIRI Photo Scan limits; see src/lib/server/kiri.ts. */
 const LIMITS = { minImages: 20, maxImages: 300, maxVideoSec: 180, maxVideoPx: 1920, maxVideoMb: 500, maxGlbMb: 150 };
@@ -41,6 +40,27 @@ const captureTips = [
   "Put it on a plain, matte surface. Very shiny or transparent objects scan poorly.",
   `Videos: 1–2 minutes, up to 1080p and ${LIMITS.maxVideoSec / 60} minutes.`,
 ];
+
+function uploadCapture(body: FormData, onProgress: (percent: number) => void) {
+  return new Promise<{ id: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/models/capture");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 85));
+    };
+    xhr.onload = () => {
+      const data = JSON.parse(xhr.responseText || "{}") as { id?: string; error?: string };
+      if (xhr.status >= 200 && xhr.status < 300 && data.id) {
+        onProgress(100);
+        resolve({ id: data.id });
+        return;
+      }
+      reject(new Error(data.error || "Could not start the scan."));
+    };
+    xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));
+    xhr.send(body);
+  });
+}
 
 function formatBytes(n: number) {
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -173,13 +193,14 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
   const [name, setName] = useState("");
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const [paying, setPaying] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !paying && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !paying && !submitting && onClose();
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     dialogRef.current?.focus();
@@ -187,21 +208,7 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose, paying]);
-
-  useEffect(() => {
-    if (step !== 2) return;
-    const start = performance.now();
-    const id = setInterval(() => {
-      const p = Math.min(100, ((performance.now() - start) / PROCESSING_MS) * 100);
-      setProgress(p);
-      if (p >= 100) {
-        clearInterval(id);
-        setTimeout(() => setStep(3), 500);
-      }
-    }, 100);
-    return () => clearInterval(id);
-  }, [step]);
+  }, [onClose, paying, submitting]);
 
   const switchMode = (m: Mode) => {
     setMode(m);
@@ -229,6 +236,8 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
     acceptFiles(e.dataTransfer.files);
   };
 
+  const totalSize = files.reduce((s, f) => s + f.size, 0);
+
   const finish = (status: NewModel["status"]) => {
     const file = files[0];
     onComplete(
@@ -238,18 +247,43 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
     );
   };
 
+  const startCapture = async () => {
+    setError(null);
+    setSubmitting(true);
+    setProgress(0);
+    setStep(2);
+    const body = new FormData();
+    body.set("name", name.trim());
+    files.forEach((file) => body.append("files", file));
+    try {
+      const result = await uploadCapture(body, setProgress);
+      onComplete({
+        id: result.id,
+        name: name.trim(),
+        status: "processing",
+        source: "capture",
+        remote: true,
+        fileSize: formatStorage(totalSize / 1024 / 1024),
+      });
+    } catch (err) {
+      setStep(1);
+      setError(err instanceof Error ? err.message : "Could not start the scan.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const checkout = () => {
     setPaying(true);
     setTimeout(() => finish("active"), 1400);
   };
 
   const isVideo = files[0]?.type.startsWith("video/");
-  const totalSize = files.reduce((s, f) => s + f.size, 0);
   const heavyUpload = mode === "file" && !error && totalSize > settings.maxFileSizeMb * 1024 * 1024;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !paying && onClose()} aria-hidden />
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !paying && !submitting && onClose()} aria-hidden />
       <div
         ref={dialogRef}
         tabIndex={-1}
@@ -262,7 +296,7 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
           <StepIndicator step={step} mode={mode} />
           <button
             onClick={onClose}
-            disabled={paying}
+            disabled={paying || submitting}
             aria-label="Close"
             className="grid size-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
           >
@@ -280,7 +314,7 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
               <div role="radiogroup" aria-label="Source" className="mt-4 grid grid-cols-2 gap-2">
                 {(
                   [
-                    { value: "capture", icon: Camera, title: "Scan a product", text: "Video or photos · uses 1 credit" },
+                    { value: "capture", icon: Camera, title: "Scan with KIRI", text: "Short video or photos from every angle" },
                     { value: "file", icon: FileBox, title: "Upload a 3D file", text: "Existing .glb · no credit" },
                   ] as const
                 ).map((o) => (
@@ -404,7 +438,11 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
                 className="mt-6 space-y-6"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  setStep(mode === "capture" ? 2 : 3);
+                  if (mode === "capture") {
+                    void startCapture();
+                    return;
+                  }
+                  setStep(3);
                 }}
               >
                 <Input id="model-name" label="Model Name" placeholder="e.g. Running Sneaker" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -424,9 +462,11 @@ export function UploadWizard({ onClose, onComplete }: { onClose: () => void; onC
             <div className="animate-fade-up flex flex-col items-center text-center" aria-live="polite">
               <ProgressRing value={progress} />
               <h2 id={titleId} className="mt-6 text-xl font-semibold tracking-tight">
-                Generating your 3D mesh…
+                Sending your capture to KIRI…
               </h2>
-              <p className="mt-1 text-sm text-slate-500">This usually takes 2–3 minutes. You can close this window; we’ll notify you.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                KIRI Engine turns the video or photos into a detailed mesh. Reconstruction usually takes a few minutes after the upload finishes.
+              </p>
               <ul className="mt-8 w-full max-w-xs space-y-3 text-left">
                 {tasks.map((task, i) => {
                   const threshold = ((i + 1) / tasks.length) * 100;

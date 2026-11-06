@@ -11,7 +11,7 @@ import { UploadWizard } from "@/components/upload-wizard";
 import { useActivity } from "@/components/activity-store";
 import { useModels } from "@/components/models-store";
 import { useSettings } from "@/components/settings-store";
-import { isLive, shortUrl, type ArModel, type ModelStatus } from "@/lib/models";
+import { isLive, viewerUrl, type ArModel, type ModelStatus } from "@/lib/models";
 import { downloadBlob, qrZip } from "@/lib/qr";
 import { cn } from "@/lib/cn";
 
@@ -175,7 +175,7 @@ export default function DashboardPage() {
     setExporting(true);
     try {
       const zip = await qrZip(
-        exportable.map((m) => ({ name: m.name, url: `https://${shortUrl(m.slug, settings.viewerDomain)}` })),
+        exportable.map((m) => ({ name: m.name, url: viewerUrl(m.slug, settings.viewerDomain, window.location.origin) })),
         { color: settings.qrColor, errorCorrectionLevel: settings.qrErrorCorrection },
       );
       downloadBlob(zip, `qr-codes-${new Date().toISOString().slice(0, 10)}.zip`);

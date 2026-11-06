@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { Box, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -18,9 +18,12 @@ type Props = {
   /** Rendered in model-viewer's `ar-button` slot; only visible on devices that support AR. */
   arButton?: ReactNode;
   onArStart?: () => void;
+  onLoad?: () => void;
 };
 
-export function ModelViewer({
+export type ModelViewerHandle = { activateAR: () => Promise<void> };
+
+export const ModelViewer = forwardRef<ModelViewerHandle, Props>(function ModelViewer({
   src,
   alt,
   className,
@@ -33,15 +36,26 @@ export function ModelViewer({
   lazy = false,
   arButton,
   onArStart,
-}: Props) {
+  onLoad,
+}: Props, handle) {
   const ref = useRef<HTMLElement>(null);
   const [libReady, setLibReady] = useState(false);
   const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
   const onArStartRef = useRef(onArStart);
+  const onLoadRef = useRef(onLoad);
+
+  useImperativeHandle(handle, () => ({
+    activateAR: async () => {
+      const el = ref.current as (HTMLElement & { activateAR?: () => Promise<void> }) | null;
+      if (!el?.activateAR) throw new Error("AR is not available on this device.");
+      await el.activateAR();
+    },
+  }));
 
   useEffect(() => {
     onArStartRef.current = onArStart;
-  }, [onArStart]);
+    onLoadRef.current = onLoad;
+  }, [onArStart, onLoad]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,11 +70,16 @@ export function ModelViewer({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const onLoad = () => setState("loaded");
+    const onLoad = () => {
+      setState("loaded");
+      onLoadRef.current?.();
+    };
     const onError = () => setState("error");
     const onAr = (e: Event) => {
       if ((e as CustomEvent<{ status: string }>).detail?.status === "session-started") onArStartRef.current?.();
     };
+    const alreadyLoaded = (el as HTMLElement & { loaded?: boolean }).loaded;
+    if (alreadyLoaded) onLoad();
     el.addEventListener("load", onLoad);
     el.addEventListener("error", onError);
     el.addEventListener("ar-status", onAr);
@@ -107,4 +126,4 @@ export function ModelViewer({
       )}
     </div>
   );
-}
+});
