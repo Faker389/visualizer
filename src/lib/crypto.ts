@@ -5,7 +5,7 @@ import { userInterface } from "./types"
 const algorithm = "aes-256-gcm"
 
 // Generate a proper 32-byte key from your secret
-const rawKey = process.env.NEXT_PUBLIC_rawKey!
+const rawKey = process.env.RAWKEY!
 const secretKey = crypto.createHash("sha256").update(rawKey).digest()
 
 // Encrypt a single field
