@@ -2,6 +2,7 @@ import "server-only";
 import { completeIfProcessing, failIfProcessing } from "@/lib/server/models-db";
 import { assertGlb, assertUsdz, compressGlb } from "@/lib/server/assets";
 import { uploadModelAsset } from "@/lib/server/storage";
+import { PRODUCTION_VIEWER_ORIGIN } from "@/lib/models";
 import { viewerSlug } from "@/lib/server/slug";
 
 export type CompletionResult =
@@ -41,7 +42,7 @@ export async function completeModel(
   return {
     status: "completed",
     modelId: model.id,
-    viewerUrl: `${(process.env.VIEWER_BASE_URL ?? "").replace(/\/+$/, "")}/v/${slug}`,
+    viewerUrl: `${(process.env.VIEWER_BASE_URL || PRODUCTION_VIEWER_ORIGIN).replace(/\/+$/, "")}/v/${slug}`,
     glbS3Url,
     usdzS3Url,
     compression: { originalBytes: glbRaw.byteLength, storedBytes: glb.byteLength },

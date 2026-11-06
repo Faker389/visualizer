@@ -94,12 +94,20 @@ export const formatDate = (iso: string) =>
 export const viewerPath = (slug: string) => `/v/${slug}`;
 export const shortUrl = (slug: string, domain: string) => `${domain}${viewerPath(slug)}`;
 
+export const PRODUCTION_VIEWER_HOST = "visualizer-tau-jade.vercel.app";
+export const PRODUCTION_VIEWER_ORIGIN = `https://${PRODUCTION_VIEWER_HOST}`;
+
 const PLACEHOLDER_VIEWER_DOMAINS = new Set(["ar.yourdomain.com", "ar.my-saas.com"]);
 
-/** Public link encoded in the QR code. A placeholder domain uses the site you're actually on. */
-export function viewerUrl(slug: string, domain: string, origin = "") {
-  if ((!domain || PLACEHOLDER_VIEWER_DOMAINS.has(domain)) && origin) return `${origin.replace(/\/+$/, "")}${viewerPath(slug)}`;
-  return `https://${domain}${viewerPath(slug)}`;
+/** Host encoded in QR codes. Placeholder domains use the hosted site, including when you generate the code locally. */
+export function viewerHost(domain: string) {
+  const host = domain.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "").split("/")[0];
+  if (!host || PLACEHOLDER_VIEWER_DOMAINS.has(host)) return PRODUCTION_VIEWER_HOST;
+  return host;
+}
+
+export function viewerUrl(slug: string, domain: string) {
+  return `https://${viewerHost(domain)}${viewerPath(slug)}`;
 }
 
 export const deviceSplit = [

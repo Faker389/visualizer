@@ -557,10 +557,7 @@ export default function ModelDetailPage() {
   const { notify } = useActivity();
   const { copied, copy } = useCopy();
   const [notice, setNotice] = useState("");
-  const [origin, setOrigin] = useState("");
   const model = models.find((m) => m.id === id);
-
-  useEffect(() => setOrigin(window.location.origin), []);
 
   if (!model) {
     return (
@@ -578,7 +575,7 @@ export default function ModelDetailPage() {
   }
 
   const live = isLive(model);
-  const url = viewerUrl(model.slug, settings.viewerDomain, origin);
+  const url = viewerUrl(model.slug, settings.viewerDomain);
   const liveCount = models.filter(isLive).length;
   const slotsFull = plan.liveModels !== null && liveCount >= plan.liveModels;
   const canToggle = model.status === "active" || model.status === "unpublished";

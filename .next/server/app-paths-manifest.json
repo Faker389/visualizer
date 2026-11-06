@@ -1,6 +1,23 @@
 {
-  "/api/models/[id]/route": "app/api/models/[id]/route.js",
   "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/models/[id]/route": "app/api/models/[id]/route.js",
+  "/api/view/[slug]/route": "app/api/view/[slug]/route.js",
+  "/api/cron/kiri-sync/route": "app/api/cron/kiri-sync/route.js",
+  "/api/account/route": "app/api/account/route.js",
+  "/api/webhooks/engine/route": "app/api/webhooks/engine/route.js",
+  "/api/webhooks/kiri/route": "app/api/webhooks/kiri/route.js",
+  "/api/models/capture/route": "app/api/models/capture/route.js",
+  "/change-password/page": "app/change-password/page.js",
+  "/page": "app/page.js",
+  "/forgot-password/page": "app/forgot-password/page.js",
+  "/register/page": "app/register/page.js",
+  "/v/[slug]/page": "app/v/[slug]/page.js",
+  "/login/page": "app/login/page.js",
+  "/(app)/analytics/page": "app/(app)/analytics/page.js",
+  "/(app)/billing/page": "app/(app)/billing/page.js",
+  "/(app)/help/page": "app/(app)/help/page.js",
   "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
-  "/(app)/models/[id]/page": "app/(app)/models/[id]/page.js"
+  "/(app)/models/[id]/page": "app/(app)/models/[id]/page.js",
+  "/(app)/settings/page": "app/(app)/settings/page.js"
 }

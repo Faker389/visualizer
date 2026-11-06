@@ -175,7 +175,7 @@ export default function DashboardPage() {
     setExporting(true);
     try {
       const zip = await qrZip(
-        exportable.map((m) => ({ name: m.name, url: viewerUrl(m.slug, settings.viewerDomain, window.location.origin) })),
+        exportable.map((m) => ({ name: m.name, url: viewerUrl(m.slug, settings.viewerDomain) })),
         { color: settings.qrColor, errorCorrectionLevel: settings.qrErrorCorrection },
       );
       downloadBlob(zip, `qr-codes-${new Date().toISOString().slice(0, 10)}.zip`);

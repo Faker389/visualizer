@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { viewerHost } from "@/lib/models";
 
 export type TeamRole = "owner" | "admin" | "editor" | "viewer";
 export type TeamMember = { id: string; email: string; name: string; role: TeamRole; status: "active" | "invited" };
@@ -55,7 +56,7 @@ export const defaultSettings: Settings = {
   name: "Jane Cooper",
   email: "jane@studio.co",
   workspaceName: "Studio Co",
-  viewerDomain: "ar.yourdomain.com",
+  viewerDomain: "visualizer-tau-jade.vercel.app",
   brandColor: "#4f46e5",
   showBranding: true,
   qrColor: "#0f172a",
@@ -94,7 +95,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setSettings({ ...defaultSettings, ...JSON.parse(stored) });
+      if (stored) {
+        const parsed = { ...defaultSettings, ...JSON.parse(stored) } as Settings;
+        parsed.viewerDomain = viewerHost(parsed.viewerDomain);
+        setSettings(parsed);
+      }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
